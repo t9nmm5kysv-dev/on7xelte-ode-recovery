@@ -281,3 +281,13 @@ mount -t ext4 -o ro /dev/block/dm-0 /data
 The investigation showed that the Galaxy J7 Prime’s encrypted userdata could not be decrypted by TWRP alone because the real Samsung ODE/FMP/KeyMaster path was missing. By recreating Samsung userspace dependencies and patching a stock `vold` runtime guard, recovery-side credential verification was made to reach Samsung ODE and KeyMaster successfully.
 
 The method does not bypass the encryption credential. It makes the correct Samsung decryption path available from TWRP recovery. Actual data recovery still requires the correct original disk decryption password.
+
+---
+
+## Security impact
+
+This work enables recovery-side automation of credential verification through Samsung's original ODE/KeyMaster path. It does not bypass encryption, extract the disk key, defeat KeyMaster, or recover data without the correct credential.
+
+The practical attack surface requires physical access, a bootable custom recovery environment, compatible stock Samsung userspace components, and device-specific patching. Attempt speed remains limited by the device's Samsung ODE/KeyMaster path, measured at roughly 0.66–0.70 seconds per attempt on this device.
+
+The primary risk is targeted guessing of weak or remembered credentials. Strong alphanumeric credentials remain impractical to brute force through this method.
