@@ -1,0 +1,14 @@
+# Secrets / recovered data
+FOUND_PASSWORD.txt
+phone_recovered/
+**/FOUND_PASSWORD.txt
+
+# Large firmware/images/raw dumps
+*.img
+*.bin
+*.tar.md5
+*.raw.img
+
+# Local Git/editor noise
+.DS_Store
+*.swp
