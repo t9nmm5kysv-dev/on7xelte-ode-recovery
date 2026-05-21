@@ -1,16 +1,14 @@
-# Samsung Galaxy J7 Prime (`on7xelte`) ODE Recovery Research
+﻿# Samsung Galaxy J7 Prime (`on7xelte`) ODE Recovery Research
 
-**Researcher:** Omer Semsi (`@t9nmm5kysv-dev`)
+This repository documents a recovery-side investigation into Samsung Android 7.0 ODE/FMP encryption on the Galaxy J7 Prime (`SM-G610F`, `on7xelte`). The goal was to understand why TWRP could not decrypt `/data`, reproduce Samsungâ€™s stock decryption path inside recovery, and preserve the scripts, binaries, logs, and candidate-generation work used during the investigation.
 
-This repository documents a recovery-side investigation into Samsung Android 7.0 ODE/FMP encryption on the Galaxy J7 Prime (`SM-G610F`, `on7xelte`). The goal was to understand why TWRP could not decrypt `/data`, reproduce Samsung’s stock decryption path inside recovery, and preserve the scripts, binaries, logs, and candidate-generation work used during the investigation.
-
-This is not a generic unlock or bypass project. The work reconstructs Samsung’s stock ODE/KeyMaster credential-verification path from TWRP recovery. The correct disk credential is still required.
+This is not a generic unlock or bypass project. The work reconstructs Samsungâ€™s stock ODE/KeyMaster credential-verification path from TWRP recovery. The correct disk credential is still required.
 
 ---
 
 ## Summary
 
-The device used Samsung ODE/FMP-style full-disk encryption. Standard TWRP decryption failed. Patching TWRP’s `recovery.fstab` was not enough. Legacy Android FDE extraction tools were also not applicable.
+The device used Samsung ODE/FMP-style full-disk encryption. Standard TWRP decryption failed. Patching TWRPâ€™s `recovery.fstab` was not enough. Legacy Android FDE extraction tools were also not applicable.
 
 The successful technical path was:
 
@@ -63,37 +61,37 @@ Observed partition mapping:
 
 ```text
 .
-├── README.md
-├── MANIFEST.md
-├── notes/
-│   ├── on7xelte_ode_recovery_research_paper.md
-│   └── samsung_j7_ode_twrp_recovery_notes.md
-├── binaries/
-│   ├── vold
-│   ├── vold_patched
-│   └── run_vold_patched_with_sockets.arm64
-├── scripts/
-│   ├── run_vold_patched_with_sockets.c
-│   ├── device_try_passwords.sh
-│   ├── start_local_decrypt.sh
-│   ├── run_all.sh
-│   ├── try_password_file_decrypt.sh
-│   ├── try_password_file_fast.sh
-│   └── fstab.raw
-├── generators/
-│   ├── gen_simple_letter_number_candidates.py
-│   ├── gen_pattern_candidates.py
-│   └── gen_sequence_repetitive_candidates.py
-├── candidates/
-│   └── generated candidate lists
-├── logs/
-│   ├── ode_keymaster_tail.txt
-│   ├── live_keymaster_counter_proof.txt
-│   ├── phone_processes.txt
-│   ├── dm_mapper_state.txt
-│   └── data_media_check.txt
-└── phone_cache/
-    └── decrypt_work/
+â”œâ”€â”€ README.md
+â”œâ”€â”€ MANIFEST.md
+â”œâ”€â”€ notes/
+â”‚   â”œâ”€â”€ on7xelte_ode_recovery_research_paper.md
+â”‚   â””â”€â”€ samsung_j7_ode_twrp_recovery_notes.md
+â”œâ”€â”€ binaries/
+â”‚   â”œâ”€â”€ vold
+â”‚   â”œâ”€â”€ vold_patched
+â”‚   â””â”€â”€ run_vold_patched_with_sockets.arm64
+â”œâ”€â”€ scripts/
+â”‚   â”œâ”€â”€ run_vold_patched_with_sockets.c
+â”‚   â”œâ”€â”€ device_try_passwords.sh
+â”‚   â”œâ”€â”€ start_local_decrypt.sh
+â”‚   â”œâ”€â”€ run_all.sh
+â”‚   â”œâ”€â”€ try_password_file_decrypt.sh
+â”‚   â”œâ”€â”€ try_password_file_fast.sh
+â”‚   â””â”€â”€ fstab.raw
+â”œâ”€â”€ generators/
+â”‚   â”œâ”€â”€ gen_simple_letter_number_candidates.py
+â”‚   â”œâ”€â”€ gen_pattern_candidates.py
+â”‚   â””â”€â”€ gen_sequence_repetitive_candidates.py
+â”œâ”€â”€ candidates/
+â”‚   â””â”€â”€ generated candidate lists
+â”œâ”€â”€ logs/
+â”‚   â”œâ”€â”€ ode_keymaster_tail.txt
+â”‚   â”œâ”€â”€ live_keymaster_counter_proof.txt
+â”‚   â”œâ”€â”€ phone_processes.txt
+â”‚   â”œâ”€â”€ dm_mapper_state.txt
+â”‚   â””â”€â”€ data_media_check.txt
+â””â”€â”€ phone_cache/
+    â””â”€â”€ decrypt_work/
 ```
 
 ---
@@ -110,7 +108,7 @@ Several old TWRP images used an incorrect userdata partition such as `mmcblk0p24
 
 ### 3. TWRP fstab patching was insufficient
 
-Patching the working TWRP 3.7.1 fstab to remove `fileencryption=ice` and adjust footer length allowed the image to boot, but TWRP still failed to decrypt. The missing component was Samsung’s stock ODE/KeyMaster cryptfs path.
+Patching the working TWRP 3.7.1 fstab to remove `fileencryption=ice` and adjust footer length allowed the image to boot, but TWRP still failed to decrypt. The missing component was Samsungâ€™s stock ODE/KeyMaster cryptfs path.
 
 ### 4. Stock Samsung `vold` required Android init state
 
@@ -278,16 +276,7 @@ mount -t ext4 -o ro /dev/block/dm-0 /data
 
 ## Conclusion
 
-The investigation showed that the Galaxy J7 Prime’s encrypted userdata could not be decrypted by TWRP alone because the real Samsung ODE/FMP/KeyMaster path was missing. By recreating Samsung userspace dependencies and patching a stock `vold` runtime guard, recovery-side credential verification was made to reach Samsung ODE and KeyMaster successfully.
+The investigation showed that the Galaxy J7 Primeâ€™s encrypted userdata could not be decrypted by TWRP alone because the real Samsung ODE/FMP/KeyMaster path was missing. By recreating Samsung userspace dependencies and patching a stock `vold` runtime guard, recovery-side credential verification was made to reach Samsung ODE and KeyMaster successfully.
 
 The method does not bypass the encryption credential. It makes the correct Samsung decryption path available from TWRP recovery. Actual data recovery still requires the correct original disk decryption password.
 
----
-
-## Security impact
-
-This work enables recovery-side automation of credential verification through Samsung's original ODE/KeyMaster path. It does not bypass encryption, extract the disk key, defeat KeyMaster, or recover data without the correct credential.
-
-The practical attack surface requires physical access, a bootable custom recovery environment, compatible stock Samsung userspace components, and device-specific patching. Attempt speed remains limited by the device's Samsung ODE/KeyMaster path, measured at roughly 0.66–0.70 seconds per attempt on this device.
-
-The primary risk is targeted guessing of weak or remembered credentials. Strong alphanumeric credentials remain impractical to brute force through this method.
