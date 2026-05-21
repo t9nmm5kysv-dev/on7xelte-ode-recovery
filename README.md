@@ -96,6 +96,14 @@ Observed partition mapping:
 
 ---
 
+## Portability
+
+This repository is validated only on the Samsung Galaxy J7 Prime SM-G610F / `on7xelte` Android 7.0 build documented here. The method may be relevant to closely related Samsung Android 6/7 ODE/FMP devices, but other devices require separate firmware analysis and runtime verification.
+
+See [`docs/PORTABILITY.md`](docs/PORTABILITY.md).
+
+---
+
 ## Key findings
 
 ### 1. Legacy Android FDE tools did not apply
