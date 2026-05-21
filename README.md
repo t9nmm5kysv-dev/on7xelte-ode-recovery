@@ -274,12 +274,6 @@ mount -t ext4 -o ro /dev/block/dm-0 /data
 
 ---
 
-## Candidate-list warning
-
-This repository may include generated candidate lists. These lists can reveal password-pattern habits, numeric anchors, letter placement habits, and dot-placement habits. Keep the repository private.
-
----
-
 ## Conclusion
 
 The investigation showed that the Galaxy J7 Prime’s encrypted userdata could not be decrypted by TWRP alone because the real Samsung ODE/FMP/KeyMaster path was missing. By recreating Samsung userspace dependencies and patching a stock `vold` runtime guard, recovery-side credential verification was made to reach Samsung ODE and KeyMaster successfully.
