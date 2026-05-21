@@ -1,14 +1,24 @@
-# Secrets / recovered data
+# Secrets and recovered data
 FOUND_PASSWORD.txt
 phone_recovered/
 **/FOUND_PASSWORD.txt
 
-# Large firmware/images/raw dumps
+# Proprietary or device-specific binaries
+binaries/
 *.img
 *.bin
 *.tar.md5
 *.raw.img
 
-# Local Git/editor noise
+# Private working artifacts
+candidates/
+phone_cache/
+logs/
+file-list.txt
+*.log
+
+# Local/editor noise
 .DS_Store
+Thumbs.db
 *.swp
+*.tmp

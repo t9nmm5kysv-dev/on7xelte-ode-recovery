@@ -1,290 +1,168 @@
-﻿# Samsung Galaxy J7 Prime (`on7xelte`) ODE Recovery Research
+# Samsung Galaxy J7 Prime (`on7xelte`) ODE Recovery Research
 
-This repository documents a recovery-side investigation into Samsung Android 7.0 ODE/FMP encryption on the Galaxy J7 Prime (`SM-G610F`, `on7xelte`). The goal was to understand why TWRP could not decrypt `/data`, reproduce Samsungâ€™s stock decryption path inside recovery, and preserve the scripts, binaries, logs, and candidate-generation work used during the investigation.
+**Researcher:** Omer Semsi (`@t9nmm5kysv-dev`)
 
-This is not a generic unlock or bypass project. The work reconstructs Samsungâ€™s stock ODE/KeyMaster credential-verification path from TWRP recovery. The correct disk credential is still required.
+This repository documents recovery-side research on Samsung Android 7.0 ODE/FMP encryption behavior on the Galaxy J7 Prime (`SM-G610F`, `on7xelte`).
+
+The work investigates why standard TWRP decryption failed and how Samsung's stock ODE/KeyMaster credential-verification path can be reconstructed from recovery.
+
+This is not a generic unlock project. It does not bypass encryption, defeat KeyMaster, extract disk keys, or recover data without the correct disk credential.
 
 ---
 
-## Summary
+## Validated target
 
-The device used Samsung ODE/FMP-style full-disk encryption. Standard TWRP decryption failed. Patching TWRPâ€™s `recovery.fstab` was not enough. Legacy Android FDE extraction tools were also not applicable.
+    Device: Samsung Galaxy J7 Prime
+    Model: SM-G610F
+    Codename: on7xelte
+    Android: 7.0
+    Build: NRD90M.G610FDDU1BQHA
+
+This repository is validated only for the documented target. Other Samsung devices require separate firmware analysis and runtime verification.
+
+See `docs/PORTABILITY.md`.
+
+---
+
+## Core finding
+
+TWRP failed because the required Samsung stock ODE/FMP and KeyMaster path was missing from the recovery environment. The issue was not solved by fstab patching alone.
 
 The successful technical path was:
 
-1. Mount stock `/system` from TWRP.
-2. Recreate Samsung vendor paths and secure-storage support.
-3. Start Samsung `secure_storage_daemon`.
+1. Mount stock `/system` from recovery.
+2. Recreate Samsung vendor paths.
+3. Start Samsung secure-storage support.
 4. Recreate Android `init` sockets expected by stock `vold`.
-5. Recreate the expected fs_mgr fstab files.
-6. Patch stock Samsung `vold` to skip a recovery-incompatible runtime-state guard.
-7. Run patched `vold` from recovery.
-8. Use `vdc cryptfs checkpw <candidate>` to reach Samsung ODE and KeyMaster.
+5. Provide compatible fs_mgr fstab aliases.
+6. Run stock Samsung cryptfs through `vdc`.
+7. Patch a recovery-incompatible `vold` runtime-state guard when required.
+8. Verify Samsung ODE/KeyMaster execution through logs.
 
-After this, failed candidates produced real Samsung ODE/KeyMaster failures:
+Representative wrong-credential behavior:
 
-```text
-CryptfsODE: Verifying pass with custom
-ODE_KeyManager: Use KeyMaster
-ODE_KeyManagerKeyMaster: obtainKey
-AES_256_GCM_Decrypt Fail
-CryptfsODE: Failed to decrypt master key
-Cryptfs: Password did not match
-```
+    CryptfsODE: Verifying pass with custom
+    ODE_KeyManager: Use KeyMaster
+    ODE_KeyManagerKeyMaster: obtainKey
+    AES_256_GCM_Decrypt Fail
+    CryptfsODE: Failed to decrypt master key
+    Cryptfs: Password did not match
 
-That proves the recovery-side technical blocker was solved. Remaining failures are credential failures, not TWRP or fstab failures.
+That log pattern proves the candidate reached Samsung ODE/KeyMaster verification. It does not prove credential recovery.
 
 ---
 
-## Device
+## Public repository scope
 
-```text
-Model: SM-G610F
-Codename: on7xelte
-Android: 7.0
-Build: NRD90M.G610FDDU1BQHA
-Security patch: 2017-08-01
-```
+This public repository intentionally excludes:
 
-Observed partition mapping:
+- Samsung proprietary binaries
+- patched Samsung binaries
+- generated password candidate lists
+- phone-side cache dumps
+- raw recovery working directories
+- recovered data
+- found credentials
 
-```text
-/system  -> /dev/block/mmcblk0p21
-/cache   -> /dev/block/mmcblk0p22
-/data    -> /dev/block/mmcblk0p25
-/efs     -> /dev/block/mmcblk0p3
-```
+The original private research bundle contained additional runtime artifacts. They are excluded here because they are either proprietary, sensitive, noisy, or not suitable for a public repository.
+
+See `docs/PUBLIC_SCOPE.md` and `docs/BINARY_PROVENANCE.md`.
 
 ---
 
 ## Repository layout
 
-```text
-.
-â”œâ”€â”€ README.md
-â”œâ”€â”€ MANIFEST.md
-â”œâ”€â”€ notes/
-â”‚   â”œâ”€â”€ on7xelte_ode_recovery_research_paper.md
-â”‚   â””â”€â”€ samsung_j7_ode_twrp_recovery_notes.md
-â”œâ”€â”€ binaries/
-â”‚   â”œâ”€â”€ vold
-â”‚   â”œâ”€â”€ vold_patched
-â”‚   â””â”€â”€ run_vold_patched_with_sockets.arm64
-â”œâ”€â”€ scripts/
-â”‚   â”œâ”€â”€ run_vold_patched_with_sockets.c
-â”‚   â”œâ”€â”€ device_try_passwords.sh
-â”‚   â”œâ”€â”€ start_local_decrypt.sh
-â”‚   â”œâ”€â”€ run_all.sh
-â”‚   â”œâ”€â”€ try_password_file_decrypt.sh
-â”‚   â”œâ”€â”€ try_password_file_fast.sh
-â”‚   â””â”€â”€ fstab.raw
-â”œâ”€â”€ generators/
-â”‚   â”œâ”€â”€ gen_simple_letter_number_candidates.py
-â”‚   â”œâ”€â”€ gen_pattern_candidates.py
-â”‚   â””â”€â”€ gen_sequence_repetitive_candidates.py
-â”œâ”€â”€ candidates/
-â”‚   â””â”€â”€ generated candidate lists
-â”œâ”€â”€ logs/
-â”‚   â”œâ”€â”€ ode_keymaster_tail.txt
-â”‚   â”œâ”€â”€ live_keymaster_counter_proof.txt
-â”‚   â”œâ”€â”€ phone_processes.txt
-â”‚   â”œâ”€â”€ dm_mapper_state.txt
-â”‚   â””â”€â”€ data_media_check.txt
-â””â”€â”€ phone_cache/
-    â””â”€â”€ decrypt_work/
-```
+    README.md
+    MANIFEST.md
+    LICENSE
+    docs/
+      BINARY_PROVENANCE.md
+      EVIDENCE_LOGS.md
+      PORTABILITY.md
+      PUBLIC_SCOPE.md
+      REPRODUCIBILITY.md
+      THREAT_MODEL.md
+      VOLD_PATCH.md
+      PUBLIC_HASHES.txt
+    notes/
+      on7xelte_ode_recovery_research_paper.md
+      samsung_j7_ode_twrp_recovery_notes.md
+    scripts/
+      run_vold_patched_with_sockets.c
+      device_try_passwords.sh
+      start_local_decrypt.sh
+      run_all.sh
+      try_password_file_decrypt.sh
+      try_password_file_fast.sh
+      fstab.raw
+    generators/
+      gen_simple_letter_number_candidates.py
+      gen_pattern_candidates.py
+      gen_sequence_repetitive_candidates.py
 
 ---
 
-## Portability
+## Documentation
 
-This repository is validated only on the Samsung Galaxy J7 Prime SM-G610F / `on7xelte` Android 7.0 build documented here. The method may be relevant to closely related Samsung Android 6/7 ODE/FMP devices, but other devices require separate firmware analysis and runtime verification.
+Start here:
 
-See [`docs/PORTABILITY.md`](docs/PORTABILITY.md).
-
----
-
-## Key findings
-
-### 1. Legacy Android FDE tools did not apply
-
-`androidfde2john.py` failed because the device did not use the old Android <=4.3 `aes256/cbc-essiv:sha256` footer format. The target used Samsung ODE/FMP and KeyMaster.
-
-### 2. Older TWRP images were unreliable
-
-Several old TWRP images used an incorrect userdata partition such as `mmcblk0p24`, while the target device used `mmcblk0p25`. Some older recoveries also had boot or touchscreen issues.
-
-### 3. TWRP fstab patching was insufficient
-
-Patching the working TWRP 3.7.1 fstab to remove `fileencryption=ice` and adjust footer length allowed the image to boot, but TWRP still failed to decrypt. The missing component was Samsungâ€™s stock ODE/KeyMaster cryptfs path.
-
-### 4. Stock Samsung `vold` required Android init state
-
-Directly running stock `vold` failed because recovery lacked:
-
-```text
-/vendor
-Samsung secure-storage daemon
-/dev/.secure_storage/ssd_socket
-/dev/socket/vold
-/dev/socket/cryptd
-ANDROID_SOCKET_* variables
-stock vold.rc arguments
-valid /fstab aliases
-```
-
-These had to be recreated manually.
-
-### 5. Stock `vold` had a recovery-incompatible crypto-state guard
-
-Even after recreating the environment, stock `vold` refused to proceed:
-
-```text
-encrypted fs already validated or not running with encryption, aborting
-```
-
-A two-byte patch changed the branch at offset `0x59edc`:
-
-```text
-old: 28 b9
-new: 1a e0
-```
-
-This allowed `cryptfs_check_passwd` to continue into footer and KeyMaster handling.
-
-### 6. The patched path reached Samsung ODE and KeyMaster
-
-Logs confirmed:
-
-```text
-CryptfsODE
-Use KeyMaster
-obtainKey
-AES_256_GCM_Decrypt
-Failed to decrypt master key
-Password did not match
-```
-
-This is the central technical result.
+- `notes/on7xelte_ode_recovery_research_paper.md` - full research write-up
+- `docs/THREAT_MODEL.md` - security impact and limitations
+- `docs/PORTABILITY.md` - device applicability and evidence levels
+- `docs/VOLD_PATCH.md` - documented `vold` patch behavior
+- `docs/BINARY_PROVENANCE.md` - why binaries are excluded
+- `docs/REPRODUCIBILITY.md` - how to reproduce from your own firmware
+- `docs/EVIDENCE_LOGS.md` - sanitized evidence log excerpts
 
 ---
 
-## Important files
+## Security impact
 
-### Binaries
+This work enables recovery-side automation of credential verification through Samsung's original ODE/KeyMaster path.
 
-```text
-binaries/vold
-binaries/vold_patched
-binaries/run_vold_patched_with_sockets.arm64
-```
+It does not:
 
-### Source/scripts
+- bypass encryption
+- extract disk keys
+- defeat KeyMaster
+- recover data without the correct credential
+- provide GPU/hashcat-style offline cracking
+- enable remote attacks
 
-```text
-scripts/run_vold_patched_with_sockets.c
-scripts/device_try_passwords.sh
-scripts/start_local_decrypt.sh
-scripts/run_all.sh
-scripts/fstab.raw
-```
+The practical attack surface requires physical access, a bootable custom recovery environment, compatible Samsung stock userspace components, device/build-specific patching, and weak or guessable credentials.
 
-### Research notes
-
-```text
-notes/on7xelte_ode_recovery_research_paper.md
-notes/samsung_j7_ode_twrp_recovery_notes.md
-```
-
-### Proof logs
-
-```text
-logs/ode_keymaster_tail.txt
-logs/live_keymaster_counter_proof.txt
-```
+Measured attempt speed on the tested device was roughly 0.66-0.70 seconds per candidate. Strong alphanumeric credentials remain impractical to brute force through this method.
 
 ---
 
-## Reproduction outline
+## Reproducibility
 
-From TWRP recovery:
+Do not use prebuilt Samsung binaries from random sources.
 
-1. Ensure `/system` can be mounted.
-2. Place runtime files under `/cache/decrypt_work`.
-3. Run:
+A responsible reproduction should:
 
-```sh
-/cache/decrypt_work/run_all.sh
-```
+1. Extract stock firmware for the exact target build.
+2. Pull or extract that build's own `vold`, `vdc`, vendor libraries, and fstab.
+3. Verify architecture and hashes.
+4. Recreate the recovery runtime environment.
+5. Locate equivalent control flow in that build's `vold`.
+6. Validate through logs that ODE/KeyMaster is reached.
+7. Treat every patch offset as build-specific.
 
-The launcher prepares the environment, starts Samsung secure storage, starts patched `vold`, and begins candidate verification.
-
-To verify ODE/KeyMaster activity:
-
-```sh
-adb shell 'logcat -d | grep -iE "CryptfsODE|KeyMaster|obtainKey|AES_256_GCM|Password did not match" | tail -80'
-```
-
-To verify active progress:
-
-```sh
-adb shell 'logcat -d | grep -i "Failed to decrypt master key" | tail -3'
-sleep 10
-adb shell 'logcat -d | grep -i "Failed to decrypt master key" | tail -3'
-```
-
-If `count=` increases, candidates are being tested through Samsung ODE/KeyMaster.
+See `docs/REPRODUCIBILITY.md`.
 
 ---
 
-## Success condition
+## Status
 
-A successful credential should cause a dm device to appear:
+The method was validated to Level 4 in the evidence model defined in `docs/PORTABILITY.md`: wrong credentials reached Samsung ODE/KeyMaster and were rejected by the real master-key verification path.
 
-```text
-/dev/block/dm-*
-```
-
-Then mount read-only:
-
-```sh
-mkdir -p /data
-mount -t ext4 -o ro /dev/block/dm-0 /data
-ls -la /data/media/0
-```
-
-Then pull recovered user data:
-
-```sh
-adb pull /data/media/0 ./phone_recovered/
-```
+Level 5 would require a known-correct credential producing a dm device and visible `/data/media/0`.
 
 ---
 
-## Safety notes
+## License
 
-Do not run:
+Original scripts and documentation in this repository are released under the MIT License.
 
-```text
-cryptfs enablecrypto
-cryptfs erase_footer
-format /data
-wipe /data
-repair encrypted userdata as ext4 before decryption
-mount decrypted data read-write before recovery
-```
-
-The safe post-success mount is read-only:
-
-```sh
-mount -t ext4 -o ro /dev/block/dm-0 /data
-```
-
----
-
-## Conclusion
-
-The investigation showed that the Galaxy J7 Primeâ€™s encrypted userdata could not be decrypted by TWRP alone because the real Samsung ODE/FMP/KeyMaster path was missing. By recreating Samsung userspace dependencies and patching a stock `vold` runtime guard, recovery-side credential verification was made to reach Samsung ODE and KeyMaster successfully.
-
-The method does not bypass the encryption credential. It makes the correct Samsung decryption path available from TWRP recovery. Actual data recovery still requires the correct original disk decryption password.
-
+This license does not apply to Samsung firmware, Samsung binaries, or any proprietary third-party code. Those artifacts are intentionally excluded from the public repository.

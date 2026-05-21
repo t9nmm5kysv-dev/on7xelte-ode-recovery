@@ -7,9 +7,11 @@
 - `docs/THREAT_MODEL.md` - security impact and limitations
 - `docs/PORTABILITY.md` - portability limits and evidence levels
 - `docs/BINARY_PROVENANCE.md` - binary artifact notes
-- `docs/VOLD_PATCH.md` - patched vold details
+- `docs/VOLD_PATCH.md` - patched `vold` details
 - `docs/EVIDENCE_LOGS.md` - sanitized proof log excerpts
 - `docs/PUBLIC_SCOPE.md` - public repository scope
+- `docs/REPRODUCIBILITY.md` - clean reproduction guide
+- `docs/PUBLIC_HASHES.txt` - hashes for public files
 
 ## Tooling
 
