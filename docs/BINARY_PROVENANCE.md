@@ -1,15 +1,31 @@
 # Binary provenance
 
-This repository includes binary artifacts captured from a Samsung Galaxy J7 Prime SM-G610F / on7xelte Android 7.0 system image and recovery-side helper binaries built during the investigation.
+The original private research bundle contained stock Samsung binaries and a patched copy of Samsung `vold` captured from the target device/firmware.
 
-## Important
+Those binaries are intentionally not included in the public repository.
 
-The included Samsung vold binary is not original project code. It is preserved only so the exact recovery experiment can be reproduced in a private research context.
+## Why binaries are excluded
 
-Do not run included binaries blindly. Verify firmware build, hashes, target architecture, and patch offsets before using them on any device.
+- Stock Samsung `vold` is proprietary Samsung firmware content.
+- A prebuilt patched `vold` is not trustworthy as a public artifact without independent verification.
+- Public users should reproduce analysis from their own firmware image and verify offsets, hashes, architecture, and control flow themselves.
 
-## Relevant binaries
+## What is documented instead
 
-- binaries/vold: stock Samsung vold pulled from the target firmware/device.
-- binaries/vold_patched: patched copy of stock Samsung vold.
-- binaries/run_vold_patched_with_sockets.arm64: ARM64 helper used to recreate Android init socket state and exec patched vold.
+This repository keeps:
+
+- the observed patch offset and byte change
+- the purpose of the patch
+- the recovery environment reconstruction method
+- the socket-wrapper source
+- scripts and research notes
+
+## Private artifact names
+
+Private bundle artifacts were:
+
+- `vold`: stock Samsung vold from the tested device/firmware
+- `vold_patched`: patched copy used during testing
+- `run_vold_patched_with_sockets.arm64`: compiled helper binary
+
+Only source and documentation should be used for public review.
