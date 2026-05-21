@@ -1,5 +1,7 @@
 # Samsung Galaxy J7 Prime (`on7xelte`) ODE Recovery Research
 
+**Researcher:** Omer Semsi (`@t9nmm5kysv-dev`)
+
 This repository documents a recovery-side investigation into Samsung Android 7.0 ODE/FMP encryption on the Galaxy J7 Prime (`SM-G610F`, `on7xelte`). The goal was to understand why TWRP could not decrypt `/data`, reproduce Samsung’s stock decryption path inside recovery, and preserve the scripts, binaries, logs, and candidate-generation work used during the investigation.
 
 This is not a generic unlock or bypass project. The work reconstructs Samsung’s stock ODE/KeyMaster credential-verification path from TWRP recovery. The correct disk credential is still required.
