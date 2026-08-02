@@ -16,11 +16,20 @@ jobs:
             -D capture/headers.txt \
             -o capture/page.html \
             https://unlockmyrouter.com/download/mobily-e5577s-932/
-          grep -Eo 'https?://[^"'"'<> ]+' capture/page.html | sort -u > capture/urls.txt || true
-          grep -Eio 'href=["'"'][^"'"']+["'"']' capture/page.html | sort -u > capture/hrefs.txt || true
-          grep -Ein 'download|file|ajax|wpdm|package|mobily|e5577' capture/page.html > capture/relevant.txt || true
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          s = Path('capture/page.html').read_text(errors='ignore')
+          urls = sorted(set(re.findall(r'https?://[^\"\'<>\s]+', s)))
+          hrefs = sorted(set(re.findall(r'href=[\"\']([^\"\']+)', s, re.I)))
+          relevant = [line for line in s.splitlines() if re.search(r'download|file|ajax|wpdm|package|mobily|e5577', line, re.I)]
+          Path('capture/urls.txt').write_text('\n'.join(urls))
+          Path('capture/hrefs.txt').write_text('\n'.join(hrefs))
+          Path('capture/relevant.txt').write_text('\n'.join(relevant))
+          PY
           wc -c capture/page.html
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: vendor-page-capture
           path: capture
