@@ -8,30 +8,20 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Build minimal i386 userspace bundle
+      - name: Fetch vendor page and linked assets
         run: |
           set -euxo pipefail
-          sudo dpkg --add-architecture i386
-          sudo apt-get update
-          sudo apt-get install -y libc6:i386 libgcc-s1:i386 libstdc++6:i386 \
-            libx11-6:i386 libxext6:i386 libxrender1:i386 libxrandr2:i386 \
-            libxi6:i386 libxinerama1:i386 libxcursor1:i386 libxfixes3:i386 \
-            libxcomposite1:i386 libfontconfig1:i386 libfreetype6:i386 \
-            libgnutls30t64:i386 libdbus-1-3:i386 libasound2t64:i386 \
-            libpulse0:i386 libxml2:i386 zlib1g:i386 libjpeg-turbo8:i386 \
-            libpng16-16t64:i386 libunwind8:i386
-          mkdir -p rootfs/lib rootfs/usr/lib
-          cp -a /lib/ld-linux.so.2 rootfs/lib/
-          cp -a /lib/i386-linux-gnu rootfs/lib/
-          cp -a /usr/lib/i386-linux-gnu rootfs/usr/lib/
-          tar -C rootfs -cJf i386-userspace.tar.xz .
-          sha256sum i386-userspace.tar.xz > SHA256SUMS.txt
-          ls -lh i386-userspace.tar.xz
+          mkdir capture
+          curl -fL --retry 3 -A 'Mozilla/5.0' \
+            -D capture/headers.txt \
+            -o capture/page.html \
+            https://unlockmyrouter.com/download/mobily-e5577s-932/
+          grep -Eo 'https?://[^"'"'<> ]+' capture/page.html | sort -u > capture/urls.txt || true
+          grep -Eio 'href=["'"'][^"'"']+["'"']' capture/page.html | sort -u > capture/hrefs.txt || true
+          grep -Ein 'download|file|ajax|wpdm|package|mobily|e5577' capture/page.html > capture/relevant.txt || true
+          wc -c capture/page.html
       - uses: actions/upload-artifact@v4
         with:
-          name: i386-userspace
-          path: |
-            i386-userspace.tar.xz
-            SHA256SUMS.txt
-          compression-level: 0
+          name: vendor-page-capture
+          path: capture
           retention-days: 1
