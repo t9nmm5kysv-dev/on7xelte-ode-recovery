@@ -8,17 +8,25 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Download portable 32-bit Wine
+      - name: Install and collect static qemu-i386
         run: |
           set -euxo pipefail
-          curl -fL --retry 5 --retry-all-errors -o wine-x86.tar.xz \
-            https://github.com/Kron4ek/Wine-Builds/releases/download/11.14/wine-11.14-x86.tar.xz
-          sha256sum wine-x86.tar.xz > SHA256SUMS.txt
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static
+          QEMU=$(command -v qemu-i386-static || true)
+          if [ -z "$QEMU" ]; then
+            QEMU=$(find /usr -type f -name 'qemu-i386-static' -print -quit)
+          fi
+          test -n "$QEMU"
+          cp "$QEMU" qemu-i386-static
+          chmod 0755 qemu-i386-static
+          sha256sum qemu-i386-static > SHA256SUMS.txt
+          file qemu-i386-static
       - uses: actions/upload-artifact@v4
         with:
-          name: wine-x86-runtime
+          name: qemu-i386-static
           path: |
-            wine-x86.tar.xz
+            qemu-i386-static
             SHA256SUMS.txt
           compression-level: 0
           retention-days: 1
