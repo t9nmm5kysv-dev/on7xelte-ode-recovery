@@ -1,0 +1,28 @@
+name: temp-fetch-wine
+on:
+  push:
+    branches:
+      - temp/wine-runtime-20260802
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Download portable Wine
+        run: |
+          set -euxo pipefail
+          curl -fL --retry 5 --retry-all-errors \
+            -o wine-11.14-amd64-wow64.tar.xz \
+            https://github.com/Kron4ek/Wine-Builds/releases/download/11.14/wine-11.14-amd64-wow64.tar.xz
+          sha256sum wine-11.14-amd64-wow64.tar.xz > SHA256SUMS.txt
+          ls -lh wine-11.14-amd64-wow64.tar.xz SHA256SUMS.txt
+      - name: Upload runtime
+        uses: actions/upload-artifact@v4
+        with:
+          name: wine-runtime
+          path: |
+            wine-11.14-amd64-wow64.tar.xz
+            SHA256SUMS.txt
+          compression-level: 0
+          retention-days: 1
