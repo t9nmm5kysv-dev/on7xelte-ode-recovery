@@ -1,4 +1,4 @@
-name: temp-mobily-vfs-capture
+name: temp-mobily-direct-vfs-copy
 on:
   pull_request:
     branches: [main]
@@ -8,134 +8,57 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Trigger flash path and capture VFS files
+      - name: Open virtual files directly
         shell: powershell
         run: |
-          $ErrorActionPreference = 'Stop'
-          $root = Join-Path $env:RUNNER_TEMP 'mobily-vfs'
-          $expanded = Join-Path $root 'expanded'
-          $out = Join-Path $root 'output'
-          $files = Join-Path $out 'files'
-          $dumps = Join-Path $out 'dumps'
-          New-Item -ItemType Directory -Force $root,$expanded,$out,$files,$dumps | Out-Null
-
-          $session = New-Object Microsoft.PowerShell.Commands.WebRequestSession
-          $pageUrl = 'https://unlockmyrouter.com/download/mobily-e5577s-932/'
-          $page = Invoke-WebRequest -UseBasicParsing -WebSession $session -Uri $pageUrl -Headers @{'User-Agent'='Mozilla/5.0'}
-          $m = [regex]::Match($page.Content,'data-downloadurl="([^"]*wpdmdl=15393[^"]*)"')
-          if (-not $m.Success) { throw 'download endpoint missing' }
-          $url = [System.Net.WebUtility]::HtmlDecode($m.Groups[1].Value)
-          $download = Join-Path $root 'download.bin'
-          Invoke-WebRequest -UseBasicParsing -WebSession $session -Uri $url -Headers @{'User-Agent'='Mozilla/5.0';'Referer'=$pageUrl} -OutFile $download
-          $raw = [IO.File]::ReadAllBytes($download)
-          if ($raw[0] -eq 0x50 -and $raw[1] -eq 0x4b) {
-            $zip = Join-Path $root 'package.zip'; Move-Item $download $zip
-            Expand-Archive -LiteralPath $zip -DestinationPath $expanded -Force
-            $exe = Get-ChildItem $expanded -Recurse -File -Filter '*.exe' | Sort-Object Length -Descending | Select-Object -First 1
-          } elseif ($raw[0] -eq 0x4d -and $raw[1] -eq 0x5a) {
-            $path = Join-Path $expanded 'E5577s-932 Mobily.exe'; Move-Item $download $path; $exe = Get-Item $path
-          } else { throw 'package is not ZIP or PE' }
-          Get-FileHash $exe.FullName -Algorithm SHA256 | Format-List | Out-File (Join-Path $out 'source-hash.txt')
-
+          $ErrorActionPreference='Stop'
+          $root=Join-Path $env:RUNNER_TEMP 'mobily-direct'; $expanded=Join-Path $root 'expanded'; $out=Join-Path $root 'output'
+          New-Item -ItemType Directory -Force $root,$expanded,$out | Out-Null
+          $s=New-Object Microsoft.PowerShell.Commands.WebRequestSession; $pageUrl='https://unlockmyrouter.com/download/mobily-e5577s-932/'
+          $page=Invoke-WebRequest -UseBasicParsing -WebSession $s -Uri $pageUrl -Headers @{'User-Agent'='Mozilla/5.0'}
+          $m=[regex]::Match($page.Content,'data-downloadurl="([^"]*wpdmdl=15393[^"]*)"'); if(!$m.Success){throw 'endpoint missing'}
+          $url=[System.Net.WebUtility]::HtmlDecode($m.Groups[1].Value); $bin=Join-Path $root 'download.bin'
+          Invoke-WebRequest -UseBasicParsing -WebSession $s -Uri $url -Headers @{'User-Agent'='Mozilla/5.0';'Referer'=$pageUrl} -OutFile $bin
+          $b=[IO.File]::ReadAllBytes($bin)
+          if($b[0]-eq 0x50 -and $b[1]-eq 0x4b){$z=Join-Path $root 'package.zip';Move-Item $bin $z;Expand-Archive $z $expanded -Force;$exe=Get-ChildItem $expanded -Recurse -File -Filter '*.exe'|Sort-Object Length -Descending|Select-Object -First 1}
+          elseif($b[0]-eq 0x4d -and $b[1]-eq 0x5a){$ep=Join-Path $expanded 'E5577s-932 Mobily.exe';Move-Item $bin $ep;$exe=Get-Item $ep}else{throw 'bad package'}
           Add-Type -TypeDefinition @'
-          using System;
-          using System.Collections.Generic;
-          using System.Diagnostics;
-          using System.IO;
-          using System.Runtime.InteropServices;
-          using System.Text;
-          public static class CaptureHelper {
-            public delegate bool EnumProc(IntPtr hwnd, IntPtr lp);
-            [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc cb, IntPtr lp);
-            [DllImport("user32.dll")] static extern bool EnumChildWindows(IntPtr parent, EnumProc cb, IntPtr lp);
-            [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetWindowText(IntPtr h, StringBuilder s, int n);
-            [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetClassName(IntPtr h, StringBuilder s, int n);
-            [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
-            [DllImport("user32.dll")] static extern bool EnableWindow(IntPtr h, bool enable);
-            [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr h, uint msg, IntPtr wp, IntPtr lp);
-            [DllImport("Dbghelp.dll", SetLastError=true)] static extern bool MiniDumpWriteDump(IntPtr h, int id, IntPtr f, uint type, IntPtr e, IntPtr u, IntPtr c);
-            const uint BM_CLICK = 0x00F5;
-            static string Text(IntPtr h) { var s=new StringBuilder(1024); GetWindowText(h,s,s.Capacity); return s.ToString(); }
-            static string Class(IntPtr h) { var s=new StringBuilder(256); GetClassName(h,s,s.Capacity); return s.ToString(); }
-            public static string EnumerateAndClick(int pid) {
-              var lines=new List<string>();
-              EnumWindows((w,l)=>{
-                uint p; GetWindowThreadProcessId(w,out p); if(p!=(uint)pid) return true;
-                lines.Add("TOP|0x"+w.ToInt64().ToString("X")+"|"+Class(w)+"|"+Text(w));
-                EnumChildWindows(w,(c,x)=>{
-                  uint cp; GetWindowThreadProcessId(c,out cp); if(cp!=(uint)pid) return true;
-                  string cl=Class(c), tx=Text(c); lines.Add("CHILD|0x"+c.ToInt64().ToString("X")+"|"+cl+"|"+tx);
-                  string q=(cl+" "+tx).ToLowerInvariant();
-                  if(q.Contains("button") || q.Contains("flash") || q.Contains("start") || q.Contains("unlock") || q.Contains("firmware")) { EnableWindow(c,true); SendMessage(c,BM_CLICK,IntPtr.Zero,IntPtr.Zero); }
-                  return true;
-                },IntPtr.Zero);
-                return true;
-              },IntPtr.Zero);
-              return string.Join(Environment.NewLine,lines);
-            }
-            public static bool Dump(Process p,string path) {
-              using(var fs=new FileStream(path,FileMode.Create,FileAccess.Write,FileShare.None))
-                return MiniDumpWriteDump(p.Handle,p.Id,fs.SafeFileHandle.DangerousGetHandle(),0x1926,IntPtr.Zero,IntPtr.Zero,IntPtr.Zero);
-            }
-            public static bool SharedCopy(string src,string dst) {
-              try { using(var i=new FileStream(src,FileMode.Open,FileAccess.Read,FileShare.ReadWrite|FileShare.Delete)) using(var o=new FileStream(dst,FileMode.Create,FileAccess.Write,FileShare.Read)) { i.CopyTo(o); } return true; } catch { return false; }
+          using System; using System.IO;
+          public static class DirectCopy {
+            public static string Copy(string src,string dst) {
+              try { using(var i=new FileStream(src,FileMode.Open,FileAccess.Read,FileShare.ReadWrite|FileShare.Delete)) using(var o=new FileStream(dst,FileMode.Create,FileAccess.Write,FileShare.Read)) { i.CopyTo(o); return "OK len="+o.Length; } }
+              catch(Exception e) { return "ERR "+e.GetType().FullName+" "+e.Message; }
             }
           }
           '@
-
-          try { New-NetFirewallRule -DisplayName 'Temporary Mobily VFS Capture Block' -Direction Outbound -Action Block -Program $exe.FullName -Profile Any | Out-Null } catch {}
-          $before = @(Get-Process | Select-Object -ExpandProperty Id)
-          $start = Get-Date
-          $main = Start-Process -FilePath $exe.FullName -WorkingDirectory $exe.DirectoryName -PassThru
-          $events = New-Object System.Collections.Generic.List[string]
-          $dumped = @{}
-          for ($i=0; $i -lt 240; $i++) {
-            Start-Sleep -Milliseconds 250
-            try {
-              $ui = [CaptureHelper]::EnumerateAndClick($main.Id)
-              if ($ui) { $ui | Set-Content (Join-Path $out ("ui-{0:D3}.txt" -f $i)) }
-            } catch { $events.Add("UI $i $($_.Exception.Message)") }
-
-            $candidates = Get-CimInstance Win32_Process -ErrorAction SilentlyContinue | Where-Object {
-              $_.ProcessId -eq $main.Id -or
-              ($before -notcontains [int]$_.ProcessId -and ($_.ExecutablePath -like "$root*" -or $_.Name -match 'flash|firmware|update|huawei|e5577|mobily'))
-            }
-            foreach ($c in $candidates) {
-              $events.Add("PROC $i pid=$($c.ProcessId) ppid=$($c.ParentProcessId) name=$($c.Name) path=$($c.ExecutablePath) cmd=$($c.CommandLine)")
-              try {
-                $p = Get-Process -Id $c.ProcessId -ErrorAction Stop
-                if (-not $dumped.ContainsKey($p.Id) -and ($i -ge 4)) {
-                  $dp = Join-Path $dumps ("pid-{0}-{1}.dmp" -f $p.Id,$p.ProcessName)
-                  $ok = [CaptureHelper]::Dump($p,$dp); $events.Add("DUMP pid=$($p.Id) ok=$ok size=$((Get-Item $dp -ErrorAction SilentlyContinue).Length)")
-                  $dumped[$p.Id]=$true
-                }
-              } catch { $events.Add("DUMPERR pid=$($c.ProcessId) $($_.Exception.Message)") }
-            }
-
-            foreach ($scanRoot in @($expanded,$env:TEMP)) {
-              Get-ChildItem $scanRoot -Recurse -File -ErrorAction SilentlyContinue | Where-Object {
-                $_.Name -match '^(fw\.bin|flasher\.exe)$' -or ($_.LastWriteTime -ge $start.AddSeconds(-2) -and $_.Length -gt 1024)
-              } | ForEach-Object {
-                $safe = ($_.FullName -replace '[:\\/]+','_')
-                $dst = Join-Path $files $safe
-                if (-not (Test-Path $dst)) {
-                  $ok=[CaptureHelper]::SharedCopy($_.FullName,$dst)
-                  $events.Add("FILE $i ok=$ok src=$($_.FullName) len=$($_.Length) dst=$dst")
-                }
-              }
+          try{New-NetFirewallRule -DisplayName 'Temporary Mobily Direct Copy Block' -Direction Outbound -Action Block -Program $exe.FullName -Profile Any|Out-Null}catch{}
+          $p=Start-Process -FilePath $exe.FullName -WorkingDirectory $exe.DirectoryName -PassThru
+          $log=New-Object System.Collections.Generic.List[string]
+          $targets=@(
+            (Join-Path $expanded 'fw.bin'),
+            (Join-Path $expanded 'flasher.exe'),
+            ((Join-Path $expanded 'flasher.exe')+'\'),
+            ('\\?\'+(Join-Path $expanded 'fw.bin')),
+            ('\\?\'+(Join-Path $expanded 'flasher.exe'))
+          )
+          foreach($ms in @(100,250,500,1000,2000,4000,8000,12000,20000)){
+            Start-Sleep -Milliseconds $ms
+            foreach($src in $targets){
+              $name=($src -replace '[:\\/\?]+','_')+'_'+$ms
+              $dst=Join-Path $out $name
+              $r=[DirectCopy]::Copy($src,$dst)
+              $log.Add("ms=$ms src=$src result=$r")
+              if($r.StartsWith('ERR')){Remove-Item $dst -Force -ErrorAction SilentlyContinue}
             }
           }
-          $events | Set-Content (Join-Path $out 'events.txt')
-          Get-CimInstance Win32_Process | Select-Object ProcessId,ParentProcessId,Name,ExecutablePath,CommandLine | Export-Csv (Join-Path $out 'processes-final.csv') -NoTypeInformation
-          Get-ChildItem $expanded -Recurse -Force | Select-Object FullName,Length,CreationTimeUtc,LastWriteTimeUtc | Export-Csv (Join-Path $out 'expanded-final.csv') -NoTypeInformation
-          Get-ChildItem $out -Recurse -File | Where-Object {$_.Name -ne 'hashes.csv'} | Get-FileHash -Algorithm SHA256 | Export-Csv (Join-Path $out 'hashes.csv') -NoTypeInformation
-          try { Get-Process -Id $main.Id -ErrorAction SilentlyContinue | Stop-Process -Force } catch {}
-          try { Remove-NetFirewallRule -DisplayName 'Temporary Mobily VFS Capture Block' -ErrorAction SilentlyContinue } catch {}
-      - name: Upload capture
-        uses: actions/upload-artifact@v4
+          $log|Set-Content(Join-Path $out 'direct-copy-log.txt')
+          Get-ChildItem $out -File|Get-FileHash -Algorithm SHA256|Export-Csv(Join-Path $out 'hashes.csv')-NoTypeInformation
+          try{Get-Process -Id $p.Id -ErrorAction SilentlyContinue|Stop-Process -Force}catch{}
+          try{Remove-NetFirewallRule -DisplayName 'Temporary Mobily Direct Copy Block' -ErrorAction SilentlyContinue}catch{}
+      - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: mobily-vfs-capture
-          path: ${{ runner.temp }}/mobily-vfs/output
+          name: mobily-direct-vfs-copy
+          path: ${{ runner.temp }}/mobily-direct/output
           compression-level: 0
           retention-days: 1
