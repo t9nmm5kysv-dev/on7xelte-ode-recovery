@@ -1,46 +1,72 @@
-name: temp-fetch-mobily-fw-package
+name: temp-capture-mobily-21315
 on:
   pull_request:
     branches: [main]
 jobs:
-  fetch:
-    runs-on: ubuntu-latest
+  capture:
+    runs-on: windows-latest
     permissions:
       contents: read
     steps:
-      - name: Fetch vendor firmware package
+      - name: Capture protected updater
+        shell: powershell
         run: |
-          set -euxo pipefail
-          mkdir capture
-          page='https://unlockmyrouter.com/download/mobily_e5577s-932_fw_web/'
-          curl -fL --retry 4 -A 'Mozilla/5.0' -c capture/cookies.txt -D capture/page-headers.txt -o capture/page.html "$page"
-          python3 - <<'PY'
-          from pathlib import Path
-          import html,re
-          s=Path('capture/page.html').read_text(errors='ignore')
-          pats=[
-            r'data-downloadurl="([^"]+)"',
-            r'href="([^"]*wpdmdl=[^"]+)"',
-            r"href='([^']*wpdmdl=[^']+)'",
-          ]
-          urls=[]
-          for p in pats:
-            urls += [html.unescape(x) for x in re.findall(p,s,re.I)]
-          urls=list(dict.fromkeys(urls))
-          Path('capture/candidates.txt').write_text('\n'.join(urls))
-          if not urls: raise SystemExit('no download URL found')
-          Path('capture/download-url.txt').write_text(urls[0])
-          print(urls[0])
-          PY
-          url=$(cat capture/download-url.txt)
-          curl -fL --retry 5 --retry-all-errors -A 'Mozilla/5.0' -b capture/cookies.txt -e "$page" -o capture/package.bin "$url"
-          sha256sum capture/package.bin > capture/SHA256SUMS.txt
-          file capture/package.bin > capture/file.txt
-          ls -lh capture/package.bin
+          $ErrorActionPreference='Stop'
+          $root=Join-Path $env:RUNNER_TEMP 'mobily-21315'
+          $out=Join-Path $root 'output'
+          $expanded=Join-Path $root 'expanded'
+          $newfiles=Join-Path $out 'new-files'
+          New-Item -ItemType Directory -Force $root,$out,$expanded,$newfiles | Out-Null
+
+          $session=New-Object Microsoft.PowerShell.Commands.WebRequestSession
+          $pageUrl='https://unlockmyrouter.com/download/mobily_e5577s-932_fw_web/'
+          $page=Invoke-WebRequest -UseBasicParsing -WebSession $session -Uri $pageUrl -Headers @{'User-Agent'='Mozilla/5.0'}
+          $m=[regex]::Match($page.Content,'data-downloadurl="([^"]+)"')
+          if(!$m.Success){throw 'download endpoint missing'}
+          $url=[System.Net.WebUtility]::HtmlDecode($m.Groups[1].Value)
+          $pkg=Join-Path $root 'package.zip'
+          Invoke-WebRequest -UseBasicParsing -WebSession $session -Uri $url -Headers @{'User-Agent'='Mozilla/5.0';'Referer'=$pageUrl} -OutFile $pkg
+          Expand-Archive -LiteralPath $pkg -DestinationPath $expanded -Force
+          $exe=Get-ChildItem $expanded -Recurse -File -Filter '*.exe' | Sort-Object Length -Descending | Select-Object -First 1
+          if(!$exe){throw 'updater EXE missing'}
+          Get-FileHash $exe.FullName -Algorithm SHA256 | Format-List | Out-File (Join-Path $out 'exe-hash.txt')
+          $exe.FullName | Set-Content (Join-Path $out 'selected-exe.txt')
+
+          Add-Type -TypeDefinition @'
+          using System; using System.IO; using System.Runtime.InteropServices;
+          public static class D {
+            [DllImport("Dbghelp.dll",SetLastError=true)] static extern bool MiniDumpWriteDump(IntPtr h,int id,IntPtr f,uint t,IntPtr e,IntPtr u,IntPtr c);
+            public static bool Dump(System.Diagnostics.Process p,string path){using(var fs=new FileStream(path,FileMode.Create,FileAccess.Write,FileShare.None))return MiniDumpWriteDump(p.Handle,p.Id,fs.SafeFileHandle.DangerousGetHandle(),0x1926,IntPtr.Zero,IntPtr.Zero,IntPtr.Zero);}
+            public static bool CopyOpen(string src,string dst){try{using(var i=new FileStream(src,FileMode.Open,FileAccess.Read,FileShare.ReadWrite|FileShare.Delete))using(var o=new FileStream(dst,FileMode.Create,FileAccess.Write,FileShare.Read)){i.CopyTo(o);}return true;}catch{return false;}}
+          }
+          '@
+          try{New-NetFirewallRule -DisplayName 'Temporary Mobily 21315 Block' -Direction Outbound -Action Block -Program $exe.FullName -Profile Any|Out-Null}catch{}
+          $before=@(Get-Process|Select-Object -ExpandProperty Id)
+          $start=Get-Date
+          $p0=Start-Process -FilePath $exe.FullName -WorkingDirectory $exe.DirectoryName -PassThru
+          $log=New-Object System.Collections.Generic.List[string]
+          foreach($ms in @(500,1500,3000,6000,12000,22000)){
+            Start-Sleep -Milliseconds $ms
+            $cands=Get-CimInstance Win32_Process -ErrorAction SilentlyContinue|Where-Object{$_.ProcessId-eq$p0.Id-or($before-notcontains[int]$_.ProcessId-and($_.ExecutablePath-like"$root*"-or$_.Name-match'update|firmware|e5577|mobily|wizard'))}
+            foreach($c in $cands){
+              $log.Add("ms=$ms pid=$($c.ProcessId) ppid=$($c.ParentProcessId) name=$($c.Name) path=$($c.ExecutablePath) cmd=$($c.CommandLine)")
+              try{$p=Get-Process -Id $c.ProcessId -ErrorAction Stop;$dp=Join-Path $out ("pid-{0}-ms-{1}.dmp"-f$p.Id,$ms);$ok=[D]::Dump($p,$dp);$log.Add("dump=$ok size=$((Get-Item $dp).Length)")}catch{$log.Add("dump-error=$($_.Exception.Message)")}
+            }
+            foreach($scan in @($expanded,$env:TEMP)){
+              Get-ChildItem $scan -Recurse -File -ErrorAction SilentlyContinue|Where-Object{$_.LastWriteTime-ge$start.AddSeconds(-2)-and$_.Length-gt 65536}|ForEach-Object{
+                if($_.FullName-notlike"$out*"){$name=$_.FullName-replace'[:\\/]+','_';$dst=Join-Path $newfiles $name;if(!(Test-Path $dst)){[void][D]::CopyOpen($_.FullName,$dst)}}
+              }
+            }
+          }
+          $log|Set-Content(Join-Path $out 'events.txt')
+          Get-CimInstance Win32_Process|Select ProcessId,ParentProcessId,Name,ExecutablePath,CommandLine|Export-Csv(Join-Path $out 'processes.csv')-NoTypeInformation
+          Get-ChildItem $out -Recurse -File|Where-Object{$_.Name-ne'hashes.csv'}|Get-FileHash -Algorithm SHA256|Export-Csv(Join-Path $out 'hashes.csv')-NoTypeInformation
+          try{Get-Process -Id $p0.Id -ErrorAction SilentlyContinue|Stop-Process -Force}catch{}
+          try{Remove-NetFirewallRule -DisplayName 'Temporary Mobily 21315 Block' -ErrorAction SilentlyContinue}catch{}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: mobily-fw-package
-          path: capture
+          name: mobily-21315-runtime
+          path: ${{ runner.temp }}/mobily-21315/output
           compression-level: 0
           retention-days: 1
