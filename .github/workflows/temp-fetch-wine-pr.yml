@@ -1,4 +1,4 @@
-name: temp-fetch-e5577s-reference
+name: temp-fetch-mobily-fw-package
 on:
   pull_request:
     branches: [main]
@@ -8,20 +8,39 @@ jobs:
     permissions:
       contents: read
     steps:
-      - name: Download untouched Huawei reference firmware
+      - name: Fetch vendor firmware package
         run: |
           set -euxo pipefail
-          mkdir reference
-          curl -fL --retry 5 --retry-all-errors -o reference/E5577s_Bs_21.327.62.00.1365.ZIP \
-            'http://update.hicloud.com:8180/TDS/data/files/p9/s92/G247/g0/v89059/f1/full/E5577s_Bs_UPDATE_21.327.62.00.1365_WEBUI_17.100.18.00.1365_MRE5.ZIP'
-          curl -fL --retry 5 --retry-all-errors -o reference/E5577s_Bs_21.318.03.01.1367.ZIP \
-            'http://update.hicloud.com:8180/TDS/data/files/p9/s92/G247/g0/v87274/f1/full/E5577s_Bs_UPDATE_21.318.03.01.1367_WEBUI_17.100.17.01.1367_MRE5.ZIP'
-          sha256sum reference/* > reference/SHA256SUMS.txt
-          file reference/*
-          ls -lh reference
+          mkdir capture
+          page='https://unlockmyrouter.com/download/mobily_e5577s-932_fw_web/'
+          curl -fL --retry 4 -A 'Mozilla/5.0' -c capture/cookies.txt -D capture/page-headers.txt -o capture/page.html "$page"
+          python3 - <<'PY'
+          from pathlib import Path
+          import html,re
+          s=Path('capture/page.html').read_text(errors='ignore')
+          pats=[
+            r'data-downloadurl="([^"]+)"',
+            r'href="([^"]*wpdmdl=[^"]+)"',
+            r"href='([^']*wpdmdl=[^']+)'",
+          ]
+          urls=[]
+          for p in pats:
+            urls += [html.unescape(x) for x in re.findall(p,s,re.I)]
+          urls=list(dict.fromkeys(urls))
+          Path('capture/candidates.txt').write_text('\n'.join(urls))
+          if not urls: raise SystemExit('no download URL found')
+          Path('capture/download-url.txt').write_text(urls[0])
+          print(urls[0])
+          PY
+          url=$(cat capture/download-url.txt)
+          curl -fL --retry 5 --retry-all-errors -A 'Mozilla/5.0' -b capture/cookies.txt -e "$page" -o capture/package.bin "$url"
+          sha256sum capture/package.bin > capture/SHA256SUMS.txt
+          file capture/package.bin > capture/file.txt
+          ls -lh capture/package.bin
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: e5577s-reference-firmware
-          path: reference
+          name: mobily-fw-package
+          path: capture
           compression-level: 0
           retention-days: 1
